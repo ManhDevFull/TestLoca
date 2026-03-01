@@ -17,9 +17,9 @@ export default function OfflinePage() {
           padding: "20px",
         }}
       >
-        <h1 style={{ marginBottom: "8px" }}>Ban dang offline</h1>
+        <h1 style={{ marginBottom: "8px" }}>Bạn đang offline</h1>
         <p style={{ lineHeight: 1.5, color: "#cbd5e1" }}>
-          Vui long kiem tra ket noi mang de tiep tuc theo doi du lieu realtime.
+          Vui lòng kiểm tra kết nối mạng để tiếp tục theo dõi dữ liệu thời gian thực.
         </p>
       </section>
     </main>

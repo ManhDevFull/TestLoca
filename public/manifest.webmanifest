@@ -1,7 +1,7 @@
 {
   "name": "TestLoc Compass PWA",
   "short_name": "TestLoc",
-  "description": "PWA la ban realtime cho PC, laptop, mobile: compass, location, DeviceMotion, BLE RSSI.",
+  "description": "PWA la bàn thời gian thực cho điện thoại: compass, location, DeviceMotion, BLE RSSI.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

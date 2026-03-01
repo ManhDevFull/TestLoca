@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   applicationName: "TestLoc Compass",
   title: "TestLoc Compass PWA",
   description:
-    "PWA la ban real-time voi thong tin thiet bi, vi tri, DeviceMotion va Bluetooth RSSI.",
+    "PWA la bàn thời gian thực với thông tin thiết bị, vị trí, DeviceMotion và Bluetooth RSSI.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [

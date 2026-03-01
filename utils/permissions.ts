@@ -29,7 +29,7 @@ type IOSPermissionCapable = {
 function secureContextError(apiName: string): PermissionResult {
   return {
     state: "unsupported",
-    error: `${apiName} can HTTPS (hoac localhost) de hoat dong tren trinh duyet.`,
+    error: `${apiName} cần HTTPS (hoặc localhost) để hoạt động trên trình duyệt.`,
   };
 }
 
@@ -38,7 +38,7 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return "Unknown permission error.";
+  return "Đã xảy ra lỗi chưa xác định khi xin quyền.";
 }
 
 async function requestIOSPermission(
@@ -81,7 +81,7 @@ export async function requestGeolocationPermission(): Promise<PermissionResult> 
   if (typeof navigator === "undefined" || !navigator.geolocation) {
     return {
       state: "unsupported",
-      error: "Geolocation API is unavailable on this device/browser.",
+      error: "Thiết bị/trình duyệt không hỗ trợ Geolocation API.",
     };
   }
 
@@ -92,14 +92,14 @@ export async function requestGeolocationPermission(): Promise<PermissionResult> 
         if (error.code === error.PERMISSION_DENIED) {
           resolve({
             state: "denied",
-            error: "Geolocation permission was denied by the user.",
+            error: "Người dùng đã từ chối quyền vị trí.",
           });
           return;
         }
 
         resolve({
           state: "error",
-          error: error.message || "Unable to retrieve location.",
+          error: error.message || "Không thể lấy vị trí hiện tại.",
         });
       },
       {
@@ -115,7 +115,7 @@ export async function requestCompassPermission(): Promise<PermissionResult> {
   if (typeof window === "undefined") {
     return {
       state: "unsupported",
-      error: "Window is unavailable.",
+      error: "Môi trường hiện tại không có Window.",
     };
   }
 
@@ -137,7 +137,7 @@ export async function requestCompassPermission(): Promise<PermissionResult> {
 
   return {
     state: "unsupported",
-    error: "DeviceOrientationEvent is unavailable.",
+    error: "Thiết bị/trình duyệt không hỗ trợ DeviceOrientationEvent.",
   };
 }
 
@@ -145,7 +145,7 @@ export async function requestDeviceMotionPermission(): Promise<PermissionResult>
   if (typeof window === "undefined") {
     return {
       state: "unsupported",
-      error: "Window is unavailable.",
+      error: "Môi trường hiện tại không có Window.",
     };
   }
 
@@ -167,7 +167,7 @@ export async function requestDeviceMotionPermission(): Promise<PermissionResult>
 
   return {
     state: "unsupported",
-    error: "DeviceMotionEvent is unavailable.",
+    error: "Thiết bị/trình duyệt không hỗ trợ DeviceMotionEvent.",
   };
 }
 
@@ -179,7 +179,7 @@ export async function requestBluetoothPermission(): Promise<BluetoothPermissionR
   if (typeof navigator === "undefined") {
     return {
       state: "unsupported",
-      error: "Web Bluetooth API is unavailable on this device/browser.",
+      error: "Thiết bị/trình duyệt không hỗ trợ Web Bluetooth API.",
     };
   }
 
@@ -188,7 +188,7 @@ export async function requestBluetoothPermission(): Promise<BluetoothPermissionR
   if (!nav.bluetooth) {
     return {
       state: "unsupported",
-      error: "Web Bluetooth API is unavailable on this device/browser.",
+      error: "Thiết bị/trình duyệt không hỗ trợ Web Bluetooth API.",
     };
   }
 
@@ -208,7 +208,7 @@ export async function requestBluetoothPermission(): Promise<BluetoothPermissionR
     if (errorName === "NotFoundError") {
       return {
         state: "denied",
-        error: "No Bluetooth device was selected.",
+        error: "Không có thiết bị Bluetooth nào được chọn.",
       };
     }
 

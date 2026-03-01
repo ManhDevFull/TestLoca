@@ -133,14 +133,24 @@ export function getDeviceInfo(): DeviceInfo {
   const nav = navigator as NavigatorWithUAData;
   const ua = nav.userAgent ?? "";
   const uaData = nav.userAgentData;
+  const touchPoints =
+    typeof navigator.maxTouchPoints === "number" ? navigator.maxTouchPoints : 0;
+  const hasTouch =
+    touchPoints > 0 ||
+    (typeof window !== "undefined" && "ontouchstart" in window);
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1366;
+
+  let type = detectDeviceType(ua, uaData);
+
+  // Fallback for browsers reporting desktop UA on touch phones.
+  if (type === "desktop" && hasTouch && viewportWidth <= 820) {
+    type = "mobile";
+  }
 
   return {
-    type: detectDeviceType(ua, uaData),
+    type,
     os: detectOperatingSystem(ua, uaData),
     browser: detectBrowser(ua, uaData?.brands),
-    touch:
-      typeof navigator.maxTouchPoints === "number"
-        ? navigator.maxTouchPoints > 0
-        : typeof window !== "undefined" && "ontouchstart" in window,
+    touch: hasTouch,
   };
 }
