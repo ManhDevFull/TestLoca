@@ -1,18 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import CompassPanel from "@/components/compass/CompassPanel";
+import BluetoothCard from "@/components/dashboard/BluetoothCard";
+import DeviceInfoCard from "@/components/dashboard/DeviceInfoCard";
+import LocationCard from "@/components/dashboard/LocationCard";
+import LogCard from "@/components/dashboard/LogCard";
+import MotionCard from "@/components/dashboard/MotionCard";
+import PermissionControls from "@/components/dashboard/PermissionControls";
+import PermissionStatusCard from "@/components/dashboard/PermissionStatusCard";
 import { useSensorHub } from "@/hooks/useSensorHub";
 import { type DeviceType, type OperatingSystem } from "@/utils/device";
-import { type SensorPermissionState } from "@/utils/permissions";
 import styles from "./page.module.css";
-
-const PERMISSION_LABELS: Record<SensorPermissionState, string> = {
-  granted: "Đã cấp",
-  denied: "Từ chối",
-  prompt: "Chờ cấp",
-  unsupported: "Không hỗ trợ",
-  error: "Lỗi",
-};
 
 const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
   mobile: "Điện thoại",
@@ -31,51 +29,6 @@ const OS_LABELS: Record<OperatingSystem, string> = {
   unknown: "Không xác định",
 };
 
-const DIRECTION_LABELS = [
-  "Bắc",
-  "Đông Bắc",
-  "Đông",
-  "Đông Nam",
-  "Nam",
-  "Tây Nam",
-  "Tây",
-  "Tây Bắc",
-];
-
-function toCardinalDirection(heading: number | null): string {
-  if (heading === null) {
-    return "Không xác định";
-  }
-
-  const normalizedHeading = ((heading % 360) + 360) % 360;
-  const index = Math.round(normalizedHeading / 45) % 8;
-
-  return DIRECTION_LABELS[index];
-}
-
-function statusClassName(
-  permission: SensorPermissionState,
-  styleMap: Record<string, string>,
-): string {
-  const mapping: Record<SensorPermissionState, string> = {
-    granted: styleMap.statusGranted,
-    denied: styleMap.statusDenied,
-    prompt: styleMap.statusPrompt,
-    unsupported: styleMap.statusUnsupported,
-    error: styleMap.statusError,
-  };
-
-  return mapping[permission];
-}
-
-function formatFixed(value: number | null, fractionDigits = 2): string {
-  if (value === null) {
-    return "--";
-  }
-
-  return value.toFixed(fractionDigits);
-}
-
 export default function Home() {
   const {
     hydrated,
@@ -83,7 +36,6 @@ export default function Home() {
     secureContext,
     currentOrigin,
     permissions,
-    heading,
     location,
     motion,
     bluetooth,
@@ -99,18 +51,6 @@ export default function Home() {
     requestLocation,
     requestBluetooth,
   } = useSensorHub();
-
-  const compassRotation = useMemo(() => (heading === null ? 0 : -heading), [heading]);
-
-  const ticks = useMemo(
-    () =>
-      Array.from({ length: 36 }, (_, index) => ({
-        id: index,
-        degree: index * 10,
-        major: index % 3 === 0,
-      })),
-    [],
-  );
 
   if (!hydrated) {
     return (
@@ -163,8 +103,12 @@ export default function Home() {
                 - Chỉ cho phép điện thoại truy cập tính năng la bàn, vị trí, cảm biến chuyển động,
                 Bluetooth.
               </p>
-              <p className={styles.note}>- Toàn bộ thao tác phần cứng sẽ bị vô hiệu hóa trên desktop/laptop.</p>
-              <p className={styles.note}>- Truy cập hiện tại: {currentOrigin || "Không xác định"}</p>
+              <p className={styles.note}>
+                - Toàn bộ thao tác phần cứng sẽ bị vô hiệu hóa trên desktop/laptop.
+              </p>
+              <p className={styles.note}>
+                - Truy cập hiện tại: {currentOrigin || "Không xác định"}
+              </p>
             </article>
           </div>
         </main>
@@ -201,210 +145,37 @@ export default function Home() {
           )}
         </header>
 
-        <section className={styles.compassSection}>
-          <div className={styles.compassBody}>
-            <div className={styles.forwardMarker} aria-hidden="true" />
+        <CompassPanel
+          canReadSensors={!accessBlocked}
+          permissionState={permissions.compass}
+        />
 
-            <div
-              className={styles.roseLayer}
-              style={{ transform: `rotate(${compassRotation}deg)` }}
-              aria-label="La bàn"
-            >
-              {ticks.map((tick) => (
-                <span
-                  key={tick.id}
-                  className={`${styles.tick} ${tick.major ? styles.tickMajor : ""}`}
-                  style={{ transform: `translate(-50%, -100%) rotate(${tick.degree}deg)` }}
-                />
-              ))}
-
-              <span className={`${styles.cardinal} ${styles.north}`}>B</span>
-              <span className={`${styles.cardinal} ${styles.east}`}>Đ</span>
-              <span className={`${styles.cardinal} ${styles.south}`}>N</span>
-              <span className={`${styles.cardinal} ${styles.west}`}>T</span>
-            </div>
-
-            <div className={styles.centerPoint} />
-          </div>
-
-          <div className={styles.headingReadout}>
-            <strong>{heading === null ? "--.-°" : `${heading.toFixed(1)}°`}</strong>
-            <span>{toCardinalDirection(heading)}</span>
-          </div>
-        </section>
-
-        <section className={styles.controlPanel}>
-          <button
-            className={styles.primaryButton}
-            disabled={accessBlocked}
-            onClick={() => void requestCorePermissions()}
-          >
-            Xin nhanh (La bàn + Motion + Vị trí)
-          </button>
-          <button
-            className={styles.secondaryButton}
-            disabled={accessBlocked}
-            onClick={() => void requestCompass()}
-          >
-            Xin quyền la bàn
-          </button>
-          <button
-            className={styles.secondaryButton}
-            disabled={accessBlocked}
-            onClick={() => void requestMotion()}
-          >
-            Xin quyền DeviceMotion
-          </button>
-          <button
-            className={styles.secondaryButton}
-            disabled={accessBlocked}
-            onClick={() => void requestLocation()}
-          >
-            Xin quyền vị trí
-          </button>
-          <button
-            className={styles.secondaryButton}
-            disabled={accessBlocked}
-            onClick={() => void requestBluetooth()}
-          >
-            Kết nối BLE + RSSI
-          </button>
-        </section>
+        <PermissionControls
+          disabled={accessBlocked}
+          onRequestCorePermissions={() => void requestCorePermissions()}
+          onRequestCompass={() => void requestCompass()}
+          onRequestMotion={() => void requestMotion()}
+          onRequestLocation={() => void requestLocation()}
+          onRequestBluetooth={() => void requestBluetooth()}
+        />
 
         <p className={styles.liveMessage} aria-live="polite">
           {lastActionMessage}
         </p>
 
         <section className={styles.grid}>
-          <article className={styles.card}>
-            <h2>Thiết bị hiện tại</h2>
-            <div className={styles.itemRow}>
-              <span>Loại:</span>
-              <strong>{DEVICE_TYPE_LABELS[deviceInfo.type]}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Hệ điều hành:</span>
-              <strong>{OS_LABELS[deviceInfo.os]}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Trình duyệt:</span>
-              <strong>{deviceInfo.browser}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Cảm ứng:</span>
-              <strong>{deviceInfo.touch ? "Có" : "Không"}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Khóa bảo mật:</span>
-              <strong>{securityLocked ? "Đang khóa" : "Bình thường"}</strong>
-            </div>
-          </article>
-
-          <article className={styles.card}>
-            <h2>Trạng thái quyền</h2>
-            <div className={styles.permissionRow}>
-              <span>La bàn</span>
-              <span className={statusClassName(permissions.compass, styles)}>
-                {PERMISSION_LABELS[permissions.compass]}
-              </span>
-            </div>
-            <div className={styles.permissionRow}>
-              <span>Vị trí</span>
-              <span className={statusClassName(permissions.location, styles)}>
-                {PERMISSION_LABELS[permissions.location]}
-              </span>
-            </div>
-            <div className={styles.permissionRow}>
-              <span>DeviceMotion</span>
-              <span className={statusClassName(permissions.motion, styles)}>
-                {PERMISSION_LABELS[permissions.motion]}
-              </span>
-            </div>
-            <div className={styles.permissionRow}>
-              <span>Web Bluetooth</span>
-              <span className={statusClassName(permissions.bluetooth, styles)}>
-                {PERMISSION_LABELS[permissions.bluetooth]}
-              </span>
-            </div>
-          </article>
+          <DeviceInfoCard deviceInfo={deviceInfo} securityLocked={securityLocked} />
+          <PermissionStatusCard permissions={permissions} />
         </section>
 
         <section className={styles.grid}>
-          <article className={styles.card}>
-            <h2>Vị trí (đã lọc ổn định)</h2>
-            <div className={styles.itemRow}>
-              <span>Vĩ độ:</span>
-              <strong className={styles.mono}>{formatFixed(location?.latitude ?? null, 6)}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Kinh độ:</span>
-              <strong className={styles.mono}>{formatFixed(location?.longitude ?? null, 6)}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Sai số:</span>
-              <strong>{formatFixed(location?.accuracy ?? null, 1)} m</strong>
-            </div>
-          </article>
-
-          <article className={styles.card}>
-            <h2>DeviceMotion (đã lọc nhiễu)</h2>
-            <div className={styles.itemRow}>
-              <span>X:</span>
-              <strong className={styles.mono}>{formatFixed(motion?.x ?? null)}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Y:</span>
-              <strong className={styles.mono}>{formatFixed(motion?.y ?? null)}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Z:</span>
-              <strong className={styles.mono}>{formatFixed(motion?.z ?? null)}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Chu kỳ:</span>
-              <strong>{formatFixed(motion?.interval ?? null)} ms</strong>
-            </div>
-          </article>
+          <LocationCard location={location} />
+          <MotionCard motion={motion} />
         </section>
 
         <section className={styles.grid}>
-          <article className={styles.card}>
-            <h2>Bluetooth RSSI</h2>
-            <div className={styles.itemRow}>
-              <span>Thiết bị:</span>
-              <strong className={styles.mono}>
-                {bluetooth.deviceName || bluetooth.deviceId || "--"}
-              </strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>RSSI:</span>
-              <strong>{bluetooth.rssi === null ? "--" : `${bluetooth.rssi} dBm`}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Tx Power:</span>
-              <strong>{bluetooth.txPower === null ? "--" : `${bluetooth.txPower} dBm`}</strong>
-            </div>
-            <div className={styles.itemRow}>
-              <span>Trạng thái:</span>
-              <strong>{bluetooth.watching ? "Đang theo dõi" : "Chưa theo dõi"}</strong>
-            </div>
-            <p className={styles.note}>{bluetooth.note}</p>
-          </article>
-
-          <article className={styles.card}>
-            <h2>Nhật ký gần nhất</h2>
-            {logs.length === 0 ? (
-              <p className={styles.note}>Chưa có sự kiện.</p>
-            ) : (
-              <ul className={styles.logList}>
-                {logs.map((line, index) => (
-                  <li key={`${line}-${index}`} className={styles.mono}>
-                    {line}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
+          <BluetoothCard bluetooth={bluetooth} />
+          <LogCard logs={logs} />
         </section>
       </main>
     </div>

@@ -13,27 +13,27 @@ import {
   type SensorPermissionState,
 } from "@/utils/permissions";
 
-interface SensorPermissions {
+export interface SensorPermissions {
   compass: SensorPermissionState;
   location: SensorPermissionState;
   motion: SensorPermissionState;
   bluetooth: SensorPermissionState;
 }
 
-interface LocationSnapshot {
+export interface LocationSnapshot {
   latitude: number;
   longitude: number;
   accuracy: number;
 }
 
-interface MotionSnapshot {
+export interface MotionSnapshot {
   x: number | null;
   y: number | null;
   z: number | null;
   interval: number | null;
 }
 
-interface BluetoothSnapshot {
+export interface BluetoothSnapshot {
   deviceName: string;
   deviceId: string;
   rssi: number | null;
@@ -74,21 +74,11 @@ const DEFAULT_DEVICE_INFO: DeviceInfo = {
   touch: false,
 };
 
-const HEADING_ALPHA = 0.24;
-const HEADING_COMMIT_INTERVAL = 120;
-const MOTION_ALPHA = 0.3;
-const MOTION_COMMIT_INTERVAL = 240;
+const MOTION_ALPHA = 0.28;
+const MOTION_COMMIT_INTERVAL = 280;
 const BLE_COMMIT_INTERVAL = 360;
-const LOCATION_COMMIT_INTERVAL = 1600;
+const LOCATION_COMMIT_INTERVAL = 1700;
 const LOG_DEDUP_INTERVAL = 1200;
-
-function normalizeDegrees(value: number): number {
-  return ((value % 360) + 360) % 360;
-}
-
-function shortestAngleDelta(from: number, to: number): number {
-  return ((to - from + 540) % 360) - 180;
-}
 
 function smoothValue(
   previous: number | null,
@@ -141,7 +131,6 @@ export function useSensorHub() {
 
   const [permissions, setPermissions] =
     useState<SensorPermissions>(DEFAULT_PERMISSIONS);
-  const [heading, setHeading] = useState<number | null>(null);
   const [location, setLocation] = useState<LocationSnapshot | null>(null);
   const [motion, setMotion] = useState<MotionSnapshot | null>(null);
   const [bluetooth, setBluetooth] =
@@ -155,9 +144,6 @@ export function useSensorHub() {
 
   const geoWatchIdRef = useRef<number | null>(null);
   const bluetoothCleanupRef = useRef<(() => void) | null>(null);
-
-  const headingFilterRef = useRef<number | null>(null);
-  const headingCommitRef = useRef(0);
 
   const motionFilterRef = useRef<MotionSnapshot | null>(null);
   const motionCommitRef = useRef(0);
@@ -544,78 +530,6 @@ export function useSensorHub() {
   const canReadSensors = hydrated && deviceInfo.type === "mobile" && !securityLocked;
 
   useEffect(() => {
-    if (!canReadSensors || permissions.compass !== "granted" || typeof window === "undefined") {
-      return;
-    }
-
-    headingFilterRef.current = null;
-    headingCommitRef.current = 0;
-
-    const onOrientation = (event: DeviceOrientationEvent) => {
-      const iosHeading = (
-        event as DeviceOrientationEvent & { webkitCompassHeading?: number }
-      ).webkitCompassHeading;
-
-      let rawHeading: number | null = null;
-
-      if (typeof iosHeading === "number" && !Number.isNaN(iosHeading)) {
-        rawHeading = normalizeDegrees(iosHeading);
-      } else if (typeof event.alpha === "number" && !Number.isNaN(event.alpha)) {
-        rawHeading = normalizeDegrees(360 - event.alpha);
-      }
-
-      if (rawHeading === null) {
-        return;
-      }
-
-      const previous = headingFilterRef.current;
-      const smoothed =
-        previous === null
-          ? rawHeading
-          : normalizeDegrees(previous + shortestAngleDelta(previous, rawHeading) * HEADING_ALPHA);
-
-      headingFilterRef.current = smoothed;
-
-      const now = performance.now();
-      if (now - headingCommitRef.current < HEADING_COMMIT_INTERVAL) {
-        return;
-      }
-
-      headingCommitRef.current = now;
-
-      const rounded = Number(smoothed.toFixed(1));
-
-      setHeading((previousHeading) => {
-        if (previousHeading === null) {
-          return rounded;
-        }
-
-        if (Math.abs(shortestAngleDelta(previousHeading, rounded)) < 0.2) {
-          return previousHeading;
-        }
-
-        return rounded;
-      });
-    };
-
-    window.addEventListener("deviceorientation", onOrientation, true);
-    window.addEventListener(
-      "deviceorientationabsolute",
-      onOrientation as EventListener,
-      true,
-    );
-
-    return () => {
-      window.removeEventListener("deviceorientation", onOrientation, true);
-      window.removeEventListener(
-        "deviceorientationabsolute",
-        onOrientation as EventListener,
-        true,
-      );
-    };
-  }, [canReadSensors, permissions.compass]);
-
-  useEffect(() => {
     if (!canReadSensors || permissions.motion !== "granted" || typeof window === "undefined") {
       return;
     }
@@ -764,7 +678,6 @@ export function useSensorHub() {
     secureContext,
     currentOrigin,
     permissions,
-    heading,
     location,
     motion,
     bluetooth,

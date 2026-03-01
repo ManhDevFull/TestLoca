@@ -153,7 +153,8 @@
   aspect-ratio: 1;
   border-radius: 50%;
   border: 1px solid rgba(148, 163, 184, 0.3);
-  transition: transform 0.2s linear;
+  transition: none;
+  will-change: transform;
 }
 
 .tick {
