@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import {
+  Geolocation,
+  type CallbackID,
+  type Position as CapacitorPosition,
+} from "@capacitor/geolocation";
 import { getDeviceInfo, type DeviceInfo } from "@/utils/device";
 import {
   queryGeolocationPermission,
@@ -142,7 +148,7 @@ export function useSensorHub() {
   const [securityLocked, setSecurityLocked] = useState(false);
   const [securityReason, setSecurityReason] = useState<string>("");
 
-  const geoWatchIdRef = useRef<number | null>(null);
+  const geoWatchIdRef = useRef<number | CallbackID | null>(null);
   const bluetoothCleanupRef = useRef<(() => void) | null>(null);
 
   const motionFilterRef = useRef<MotionSnapshot | null>(null);
@@ -600,38 +606,106 @@ export function useSensorHub() {
       typeof navigator === "undefined" ||
       !navigator.geolocation
     ) {
-      return;
+      if (!Capacitor.isNativePlatform()) {
+        return;
+      }
     }
 
     locationCommitRef.current = 0;
+    const commitLocationSnapshot = (next: LocationSnapshot) => {
+      const now = Date.now();
+      const previous = locationFilterRef.current;
 
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const next: LocationSnapshot = {
+      if (previous) {
+        const movedDistance = distanceInMeters(previous, next);
+        const minAcceptedMove = Math.max(1.5, Math.min(10, next.accuracy * 0.25));
+
+        if (movedDistance < minAcceptedMove && now - locationCommitRef.current < 3500) {
+          return;
+        }
+
+        if (now - locationCommitRef.current < LOCATION_COMMIT_INTERVAL) {
+          return;
+        }
+      }
+
+      locationFilterRef.current = next;
+      locationCommitRef.current = now;
+      setLocation(next);
+    };
+
+    if (Capacitor.isNativePlatform()) {
+      let active = true;
+      let watchId: CallbackID | null = null;
+
+      const onPosition = (position: CapacitorPosition | null, err?: unknown) => {
+        if (!active) {
+          return;
+        }
+
+        if (err) {
+          appendLog("Không thể cập nhật vị trí native thời gian thực.");
+          return;
+        }
+
+        if (!position) {
+          return;
+        }
+
+        commitLocationSnapshot({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
-        };
+        });
+      };
 
-        const now = Date.now();
-        const previous = locationFilterRef.current;
+      void (async () => {
+        try {
+          watchId = await Geolocation.watchPosition(
+            {
+              enableHighAccuracy: true,
+              timeout: 20000,
+              maximumAge: 3000,
+              minimumUpdateInterval: 1300,
+              interval: 1400,
+            },
+            onPosition,
+          );
 
-        if (previous) {
-          const movedDistance = distanceInMeters(previous, next);
-          const minAcceptedMove = Math.max(1.5, Math.min(10, next.accuracy * 0.25));
+          geoWatchIdRef.current = watchId;
 
-          if (movedDistance < minAcceptedMove && now - locationCommitRef.current < 3500) {
-            return;
+          if (!active && watchId) {
+            await Geolocation.clearWatch({ id: watchId });
           }
+        } catch (error) {
+          appendLog(
+            error instanceof Error
+              ? error.message
+              : "Không thể bật theo dõi vị trí native.",
+          );
+        }
+      })();
 
-          if (now - locationCommitRef.current < LOCATION_COMMIT_INTERVAL) {
-            return;
-          }
+      return () => {
+        active = false;
+
+        if (watchId) {
+          void Geolocation.clearWatch({ id: watchId });
         }
 
-        locationFilterRef.current = next;
-        locationCommitRef.current = now;
-        setLocation(next);
+        if (geoWatchIdRef.current === watchId) {
+          geoWatchIdRef.current = null;
+        }
+      };
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        commitLocationSnapshot({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
       },
       (error) => {
         if (error.code === error.PERMISSION_DENIED) {
@@ -660,12 +734,12 @@ export function useSensorHub() {
 
   useEffect(() => {
     return () => {
-      if (
-        geoWatchIdRef.current !== null &&
-        typeof navigator !== "undefined" &&
-        navigator.geolocation
-      ) {
-        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      if (geoWatchIdRef.current !== null) {
+        if (typeof geoWatchIdRef.current === "string") {
+          void Geolocation.clearWatch({ id: geoWatchIdRef.current });
+        } else if (typeof navigator !== "undefined" && navigator.geolocation) {
+          navigator.geolocation.clearWatch(geoWatchIdRef.current);
+        }
       }
 
       bluetoothCleanupRef.current?.();

@@ -1,17 +1,22 @@
 import withPWAInit from "@ducanh2912/next-pwa";
 import type { NextConfig } from "next";
 
+const isCapacitorBuild = process.env.CAPACITOR_BUILD === "1";
+
 const withPWA = withPWAInit({
   dest: "public",
   register: false,
   cacheOnFrontEndNav: true,
   aggressiveFrontEndNavCaching: true,
   reloadOnOnline: true,
-  disable: process.env.NODE_ENV === "development",
+  disable: process.env.NODE_ENV === "development" || isCapacitorBuild,
 });
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  output: isCapacitorBuild ? "export" : undefined,
+  images: isCapacitorBuild ? { unoptimized: true } : undefined,
+  trailingSlash: isCapacitorBuild,
   async headers() {
     return [
       {

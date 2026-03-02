@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "public/workbox-*.js",
     "public/fallback-*.js",
     "public/swe-worker-*.js",
+    "android/**",
+    "ios/**",
   ]),
 ]);
 

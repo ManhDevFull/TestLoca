@@ -122,10 +122,10 @@ export default function Home() {
       <main className={styles.main}>
         <header className={styles.header}>
           <p className={styles.kicker}>TestLoc Sensor Hub</p>
-          <h1>PWA La Bàn Thời Gian Thực</h1>
+          <h1>Hybrid La Bàn Thời Gian Thực</h1>
           <p className={styles.description}>
-            Theo dõi hướng la bàn, vị trí, DeviceMotion và BLE RSSI theo thời gian thực với bộ lọc
-            ổn định dữ liệu để trải nghiệm mượt như ứng dụng thật.
+            Theo dõi hướng la bàn, vị trí, DeviceMotion và BLE RSSI theo thời gian thực bằng kiến
+            trúc Hybrid (Next.js + Capacitor) để trải nghiệm mượt gần native.
           </p>
           <p className={styles.policyText}>
             Chính sách bảo mật: chỉ cho phép điện thoại truy cập cảm biến phần cứng.

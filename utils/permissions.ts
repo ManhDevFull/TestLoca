@@ -1,3 +1,6 @@
+import { Capacitor } from "@capacitor/core";
+import { Geolocation } from "@capacitor/geolocation";
+
 export type SensorPermissionState = PermissionState | "unsupported" | "error";
 
 export interface BluetoothDeviceLike extends EventTarget {
@@ -41,6 +44,33 @@ function getErrorMessage(error: unknown): string {
   return "Đã xảy ra lỗi chưa xác định khi xin quyền.";
 }
 
+function hasNativeCompassPlugin(): boolean {
+  return Boolean(navigator.compass?.watchHeading);
+}
+
+function isNativePlatform(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
+function mapNativeGeoPermission(
+  locationState: "prompt" | "prompt-with-rationale" | "granted" | "denied",
+  coarseLocationState: "prompt" | "prompt-with-rationale" | "granted" | "denied",
+): SensorPermissionState {
+  if (locationState === "granted" || coarseLocationState === "granted") {
+    return "granted";
+  }
+
+  if (locationState === "denied" && coarseLocationState === "denied") {
+    return "denied";
+  }
+
+  if (locationState === "prompt-with-rationale" || coarseLocationState === "prompt-with-rationale") {
+    return "prompt";
+  }
+
+  return "prompt";
+}
+
 async function requestIOSPermission(
   constructorLike: IOSPermissionCapable | undefined,
 ): Promise<PermissionResult | null> {
@@ -57,6 +87,15 @@ async function requestIOSPermission(
 }
 
 export async function queryGeolocationPermission(): Promise<SensorPermissionState> {
+  if (isNativePlatform()) {
+    try {
+      const permission = await Geolocation.checkPermissions();
+      return mapNativeGeoPermission(permission.location, permission.coarseLocation);
+    } catch {
+      return "prompt";
+    }
+  }
+
   if (typeof window !== "undefined" && !window.isSecureContext) {
     return "unsupported";
   }
@@ -74,6 +113,31 @@ export async function queryGeolocationPermission(): Promise<SensorPermissionStat
 }
 
 export async function requestGeolocationPermission(): Promise<PermissionResult> {
+  if (isNativePlatform()) {
+    try {
+      const permission = await Geolocation.requestPermissions();
+      const state = mapNativeGeoPermission(
+        permission.location,
+        permission.coarseLocation,
+      );
+
+      if (state === "granted") {
+        return { state: "granted" };
+      }
+
+      if (state === "denied") {
+        return {
+          state: "denied",
+          error: "Người dùng đã từ chối quyền vị trí.",
+        };
+      }
+
+      return { state: "prompt" };
+    } catch (error) {
+      return { state: "error", error: getErrorMessage(error) };
+    }
+  }
+
   if (typeof window !== "undefined" && !window.isSecureContext) {
     return secureContextError("Geolocation");
   }
@@ -119,6 +183,17 @@ export async function requestCompassPermission(): Promise<PermissionResult> {
     };
   }
 
+  if (isNativePlatform()) {
+    if (hasNativeCompassPlugin()) {
+      return { state: "granted" };
+    }
+
+    return {
+      state: "unsupported",
+      error: "Plugin compass native chưa sẵn sàng trên thiết bị này.",
+    };
+  }
+
   if (!window.isSecureContext) {
     return secureContextError("DeviceOrientation");
   }
@@ -149,6 +224,10 @@ export async function requestDeviceMotionPermission(): Promise<PermissionResult>
     };
   }
 
+  if (isNativePlatform()) {
+    return { state: "granted" };
+  }
+
   if (!window.isSecureContext) {
     return secureContextError("DeviceMotion");
   }
@@ -172,8 +251,10 @@ export async function requestDeviceMotionPermission(): Promise<PermissionResult>
 }
 
 export async function requestBluetoothPermission(): Promise<BluetoothPermissionResult> {
-  if (typeof window !== "undefined" && !window.isSecureContext) {
-    return secureContextError("Web Bluetooth");
+  if (!isNativePlatform()) {
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      return secureContextError("Web Bluetooth");
+    }
   }
 
   if (typeof navigator === "undefined") {

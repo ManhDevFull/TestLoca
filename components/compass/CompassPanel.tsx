@@ -1,23 +1,15 @@
 "use client";
 
+import { Capacitor } from "@capacitor/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SensorPermissionState } from "@/utils/permissions";
 import styles from "@/app/page.module.css";
 
-const DIRECTION_LABELS = [
-  "Bắc",
-  "Đông Bắc",
-  "Đông",
-  "Đông Nam",
-  "Nam",
-  "Tây Nam",
-  "Tây",
-  "Tây Bắc",
-];
-
-const FILTER_ALPHA_SLOW = 0.1;
-const FILTER_ALPHA_MEDIUM = 0.22;
-const FILTER_ALPHA_FAST = 0.36;
+const FILTER_ALPHA_SLOW = 0.08;
+const FILTER_ALPHA_MEDIUM = 0.18;
+const FILTER_ALPHA_FAST = 0.33;
+const SOURCE_DEADBAND = 0.35;
+const ACCURACY_REJECT_THRESHOLD = 35;
 const DISPLAY_COMMIT_INTERVAL = 110;
 
 interface CompassPanelProps {
@@ -35,17 +27,6 @@ function normalizeDegrees(value: number): number {
 
 function shortestAngleDelta(from: number, to: number): number {
   return ((to - from + 540) % 360) - 180;
-}
-
-function toCardinalDirection(heading: number | null): string {
-  if (heading === null) {
-    return "Không xác định";
-  }
-
-  const normalizedHeading = normalizeDegrees(heading);
-  const index = Math.round(normalizedHeading / 45) % 8;
-
-  return DIRECTION_LABELS[index];
 }
 
 function readScreenOrientationAngle(): number {
@@ -142,36 +123,121 @@ export default function CompassPanel({
       return;
     }
 
-    const onOrientation = (event: DeviceOrientationEvent) => {
-      const rawHeading = computeTiltCompensatedHeading(
-        event as OrientationEventWithWebkit,
-      );
+    let stopped = false;
+    let orientationCleanup: (() => void) | null = null;
+    let nativeWatchId: string | null = null;
+    let fallbackTimerId: number | null = null;
 
-      if (rawHeading === null) {
+    const updateTargetHeading = (
+      rawHeading: number,
+      headingAccuracy?: number,
+    ) => {
+      if (
+        typeof headingAccuracy === "number" &&
+        Number.isFinite(headingAccuracy) &&
+        headingAccuracy > ACCURACY_REJECT_THRESHOLD
+      ) {
         return;
       }
 
+      const normalized = normalizeDegrees(rawHeading);
       const previousFiltered = filteredHeadingRef.current;
 
       if (previousFiltered === null) {
-        filteredHeadingRef.current = rawHeading;
-        targetHeadingRef.current = rawHeading;
+        filteredHeadingRef.current = normalized;
+        targetHeadingRef.current = normalized;
         return;
       }
 
-      const delta = shortestAngleDelta(previousFiltered, rawHeading);
+      const delta = shortestAngleDelta(previousFiltered, normalized);
       const absDelta = Math.abs(delta);
 
-      const alpha =
+      if (absDelta < SOURCE_DEADBAND) {
+        return;
+      }
+
+      let alpha =
         absDelta > 20
           ? FILTER_ALPHA_FAST
           : absDelta > 7
             ? FILTER_ALPHA_MEDIUM
             : FILTER_ALPHA_SLOW;
 
+      if (
+        typeof headingAccuracy === "number" &&
+        Number.isFinite(headingAccuracy) &&
+        headingAccuracy > 0
+      ) {
+        const penalty = Math.min(0.45, headingAccuracy / 100);
+        alpha *= 1 - penalty;
+      }
+
       const filtered = normalizeDegrees(previousFiltered + delta * alpha);
       filteredHeadingRef.current = filtered;
       targetHeadingRef.current = filtered;
+    };
+
+    const startWebOrientationFallback = () => {
+      if (orientationCleanup || stopped) {
+        return;
+      }
+
+      const onOrientation = (event: DeviceOrientationEvent) => {
+        const rawHeading = computeTiltCompensatedHeading(
+          event as OrientationEventWithWebkit,
+        );
+
+        if (rawHeading === null) {
+          return;
+        }
+
+        updateTargetHeading(rawHeading);
+      };
+
+      window.addEventListener("deviceorientation", onOrientation, true);
+      window.addEventListener(
+        "deviceorientationabsolute",
+        onOrientation as EventListener,
+        true,
+      );
+
+      orientationCleanup = () => {
+        window.removeEventListener("deviceorientation", onOrientation, true);
+        window.removeEventListener(
+          "deviceorientationabsolute",
+          onOrientation as EventListener,
+          true,
+        );
+      };
+    };
+
+    const startNativeCompass = (): boolean => {
+      if (!navigator.compass?.watchHeading || stopped) {
+        return false;
+      }
+
+      nativeWatchId = navigator.compass.watchHeading(
+        (heading) => {
+          const hasTrueHeading =
+            typeof heading.trueHeading === "number" &&
+            Number.isFinite(heading.trueHeading) &&
+            heading.trueHeading >= 0;
+
+          const baseHeading = hasTrueHeading
+            ? heading.trueHeading
+            : heading.magneticHeading;
+
+          updateTargetHeading(baseHeading, heading.headingAccuracy);
+        },
+        () => {
+          startWebOrientationFallback();
+        },
+        {
+          frequency: 70,
+        },
+      );
+
+      return true;
     };
 
     const animate = (time: number) => {
@@ -187,40 +253,66 @@ export default function CompassPanel({
         const delta = shortestAngleDelta(next, target);
         const absDelta = Math.abs(delta);
 
-        const maxStep = Math.max(0.9, (dt / 1000) * 58);
+        const maxSpeedDegPerSec =
+          absDelta > 45 ? 220 : absDelta > 20 ? 155 : absDelta > 8 ? 108 : 72;
+        const maxStep = Math.max(0.8, (dt / 1000) * maxSpeedDegPerSec);
         const limitedStep = Math.max(-maxStep, Math.min(maxStep, delta));
 
         if (absDelta > 0.04) {
           next = normalizeDegrees(next + limitedStep);
           displayedHeadingRef.current = next;
           roseElement.style.transform = `rotate(${-next}deg)`;
+        } else {
+          displayedHeadingRef.current = target;
+          roseElement.style.transform = `rotate(${-target}deg)`;
         }
 
         if (time - displayCommitRef.current >= DISPLAY_COMMIT_INTERVAL) {
           displayCommitRef.current = time;
-          setDisplayHeading(roundHeading(next));
+          const headingForReadout = Math.round(displayedHeadingRef.current ?? next);
+          setDisplayHeading((previousValue) =>
+            previousValue === headingForReadout ? previousValue : headingForReadout,
+          );
         }
       }
 
       rafIdRef.current = window.requestAnimationFrame(animate);
     };
 
-    window.addEventListener("deviceorientation", onOrientation, true);
-    window.addEventListener(
-      "deviceorientationabsolute",
-      onOrientation as EventListener,
-      true,
-    );
+    const onDeviceReady = () => {
+      if (!startNativeCompass()) {
+        startWebOrientationFallback();
+      }
+    };
+
+    if (Capacitor.isNativePlatform()) {
+      if (!startNativeCompass()) {
+        document.addEventListener("deviceready", onDeviceReady, { once: true });
+        fallbackTimerId = window.setTimeout(() => {
+          if (!nativeWatchId && !orientationCleanup) {
+            startWebOrientationFallback();
+          }
+        }, 1500);
+      }
+    } else {
+      startWebOrientationFallback();
+    }
 
     rafIdRef.current = window.requestAnimationFrame(animate);
 
     return () => {
-      window.removeEventListener("deviceorientation", onOrientation, true);
-      window.removeEventListener(
-        "deviceorientationabsolute",
-        onOrientation as EventListener,
-        true,
-      );
+      stopped = true;
+      document.removeEventListener("deviceready", onDeviceReady);
+
+      if (fallbackTimerId !== null) {
+        window.clearTimeout(fallbackTimerId);
+      }
+
+      if (nativeWatchId && navigator.compass?.clearWatch) {
+        navigator.compass.clearWatch(nativeWatchId);
+      }
+
+      orientationCleanup?.();
 
       if (rafIdRef.current !== null) {
         window.cancelAnimationFrame(rafIdRef.current);
@@ -255,13 +347,9 @@ export default function CompassPanel({
       </div>
 
       <div className={styles.headingReadout}>
-        <strong>{readoutHeading === null ? "--.-°" : `${readoutHeading.toFixed(1)}°`}</strong>
-        <span>{toCardinalDirection(readoutHeading)}</span>
+        <strong>{readoutHeading === null ? "--°" : `${readoutHeading}°`}</strong>
+        <span>Độ phương vị</span>
       </div>
     </section>
   );
-}
-
-function roundHeading(value: number): number {
-  return Number(value.toFixed(1));
 }
